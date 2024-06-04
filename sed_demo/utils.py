@@ -88,11 +88,4 @@ def do_mixup(x, mixup_lambda):
     return out.transpose(0, -1)
 
 
-def send_to_phone():
-    #TODO 
-    '''
-    send json file to phone
-    including: date, time, soundType, hasSound
-    '''
-    return None
 

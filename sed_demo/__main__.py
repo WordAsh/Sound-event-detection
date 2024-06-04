@@ -21,6 +21,9 @@ from sed_demo.models import Cnn9_GMP_64x64
 from sed_demo.audio_loop import AsynchAudioInputStream
 from sed_demo.audio_loop import AsynchWavAudioInputStream
 from sed_demo.inference import AudioModelInference, PredictionTracker
+from sed_demo.mqtt_sender import get_client
+from sed_demo.mqtt_sender import find_sound_type
+from sed_demo.mqtt_sender import send_message
 
 class SEDApp():
     '''
@@ -35,7 +38,6 @@ class SEDApp():
     def __init__(
             self,
             model_path,
-            file_name,
             all_labels, tracked_labels=None,
             samplerate=32000, audio_chunk_length=1024, ringbuffer_length=40000,
             model_winsize=1024, stft_hopsize=512, stft_window="hann",
@@ -68,11 +70,9 @@ class SEDApp():
             categories with highest confidence, in descending order.
         """
         # 1. Input stream from microphone
-        # self.audiostream = AsynchAudioInputStream(
-        #     samplerate, audio_chunk_length, ringbuffer_length)
-
-        self.file_name = file_name
-        self.audiostream = AsynchWavAudioInputStream(self.file_name,samplerate, audio_chunk_length,ringbuffer_length)
+        self.audiostream = AsynchAudioInputStream(
+            samplerate, audio_chunk_length, ringbuffer_length)
+        # self.audiostream = AsynchWavAudioInputStream(self.file_name,samplerate, audio_chunk_length,ringbuffer_length)
 
         # 2. DL pretrained model to predict tags from ring buffer
         num_audioset_classes = len(all_labels)
@@ -172,20 +172,13 @@ def start_monitoring(path_tp_watch):
 # # MAIN ROUTINE
 # ##############################################################################
 if __name__ == '__main__':
-    time_span = 10 #unit in seconds
+    #region settings
+    time_span = 5 #unit in seconds
     detect_results = {}  #save every second detect result
-
-    file_queue = queue.Queue()
-    folder_to_watch = "/home/rigon/Projects/SoundEventDetection/General-Purpose-Sound-Recognition-Demo/wav_files/"
-
-    monitoring_threading = threading.Thread(target=start_monitoring, args=(folder_to_watch,),  daemon=True)
-    monitoring_threading.start()
 
     CONF = OmegaConf.structured(ConfDef())
     cli_conf = OmegaConf.from_cli()
     CONF = OmegaConf.merge(CONF, cli_conf)
-    # print("\n\nCONFIGURATION:")
-    # print(OmegaConf.to_yaml(CONF), end="\n\n\n")
 
     _, _, all_labels = load_csv_labels(CONF.ALL_LABELS_PATH)
     if CONF.SUBSET_LABELS_PATH is None:
@@ -193,42 +186,40 @@ if __name__ == '__main__':
     else:
         _, _, subset_labels = load_csv_labels(CONF.SUBSET_LABELS_PATH)
 
+    
+    #endregion
+    client = get_client()
     while(True):
-        file_name = file_queue.get()
-        if file_name is not None:
-            app = SEDApp(
-                CONF.MODEL_PATH,
-                file_name,
-                all_labels, subset_labels,
-                CONF.SAMPLERATE, CONF.AUDIO_CHUNK_LENGTH, CONF.RINGBUFFER_LENGTH,
-                CONF.MODEL_WINSIZE, CONF.STFT_HOPSIZE, CONF.STFT_WINDOW,
-                CONF.N_MELS, CONF.MEL_FMIN, CONF.MEL_FMAX,
-                CONF.TOP_K)
-            app.audiostream.start()
+        app = SEDApp(
+            CONF.MODEL_PATH,
+            all_labels, subset_labels,
+            CONF.SAMPLERATE, CONF.AUDIO_CHUNK_LENGTH, CONF.RINGBUFFER_LENGTH,
+            CONF.MODEL_WINSIZE, CONF.STFT_HOPSIZE, CONF.STFT_WINDOW,
+            CONF.N_MELS, CONF.MEL_FMIN, CONF.MEL_FMAX,
+            CONF.TOP_K)
+        app.audiostream.start()
 
-            endTime = datetime.datetime.now() + datetime.timedelta(seconds=time_span)  #time span
-            while(True):
-                clsname = app.inference_loop()
-                occur_time = time.strftime(" %Y-%m-%d %H:%M:%S",time.localtime())
-                time.sleep(1)     #delay for 1 sec
+        endTime = datetime.datetime.now() + datetime.timedelta(seconds=time_span)  #time span
+        while(True):
+            detect_results = {}  #save every second detect result
+            clsname = app.inference_loop()
+            occur_time = time.strftime(" %Y-%m-%d %H:%M:%S",time.localtime())
+            time.sleep(0.5)     #delay for 0.5 sec
 
-                if clsname in detect_results:
-                    detect_results[clsname] += 1
-                else:
-                    detect_results[clsname] = 1
+            if clsname in detect_results:
+                detect_results[clsname] += 1
+            else:
+                detect_results[clsname] = 1
 
-                #print(clsname,occur_time)
-                if (endTime - datetime.datetime.now()).seconds == 0:
-                    app.stop()
-                    print("Detection finished!")
-                    break
+            # print(clsname,occur_time)
+            if (endTime - datetime.datetime.now()).seconds == 0:
+                app.stop()
+                print("Detection finished!")
+                break
 
-            top_result = max(detect_results, key=detect_results.get)  
-            print(top_result)
-            file_queue.task_done()
-
-
-#region Record sound
-    # audio_manager = Audio(time_span)
-    # audio_manager.record()
-#endregion
+        top_result = max(detect_results, key=detect_results.get)  
+        print(top_result)
+        detect_results.clear()
+        result = find_sound_type(top_result)
+        if result is not None:
+            send_message(client,result)

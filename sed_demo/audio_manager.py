@@ -14,12 +14,12 @@ class Audio:
         self.CHANNELS = 2
         
         #human listen
-        # self.FORMAT = pyaudio.paInt16
-        # self.RATE = 44100
+        self.FORMAT = pyaudio.paInt16
+        self.RATE = 44100
 
         #machine listen
-        self.FORMAT = pyaudio.paFloat32
-        self.RATE = 32000
+        # self.FORMAT = pyaudio.paFloat32
+        # self.RATE = 32000
         
         self.RECORD_SECONDS = record_time
         self.WAVE_OUTPUT_FILENAME = os.path.join(os.path.abspath('.'), f"wav_files/{datetime.now().replace(microsecond=0)}.wav")
@@ -63,7 +63,7 @@ class Audio:
         '''
         play the .wav file saved locally
         '''
-        wf = wave.open(os.path.join(os.path.abspath('.'), "wav_files/2024-04-19 17:13:18.wav"),'rb')
+        wf = wave.open(os.path.join(os.path.abspath('.'), "wav_files/esp32.wav"),'rb')
         p = pyaudio.PyAudio()
         stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),channels=wf.getnchannels(),rate=wf.getframerate(),output=True)
 
@@ -75,3 +75,4 @@ class Audio:
         stream.stop_stream()
         stream.close()
         p.terminate()
+

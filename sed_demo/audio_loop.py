@@ -173,7 +173,6 @@ class AsynchWavAudioInputStream:
                                     start=False)
         # setup audio buffer
         self.rb = RingBuffer(ringbuffer_length, self.NP_DTYPE)
-
     def read(self):
         """
         Returns the current reading from the ring buffer, unwrapped so
@@ -221,7 +220,6 @@ class AsynchWavAudioInputStream:
         :param time_info: unused
         :param status: unused
         """
-        global in_arr
         data = self.wf.readframes(self.chunk)
         if data != b'':
             in_arr = np.frombuffer(data, dtype=np.float32)
